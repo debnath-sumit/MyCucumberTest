@@ -55,6 +55,9 @@ jobs:
               echo "<p>The build likely failed before tests ran (e.g. a compilation error)."
               echo "Check the workflow logs in the Actions tab.</p>"
             fi
+            # test-summary.html has no trailing newline; this guarantees the
+            # closing delimiter lands on its own line.
+            echo ""
             echo "$DELIM"
           } >> "$GITHUB_OUTPUT"
 
