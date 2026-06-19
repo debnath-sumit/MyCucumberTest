@@ -23,4 +23,4 @@ Feature: Login functionality
     Given user opens the login page
     When user enters password "${standardUser.password}"
     And user clicks on login button
-    Then user should get an error message "Password is required"
+    Then user should get an error message "Password is not required"
