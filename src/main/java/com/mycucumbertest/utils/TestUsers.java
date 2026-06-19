@@ -39,6 +39,19 @@ public final class TestUsers {
         return user("lockedOutUser");
     }
 
+    /**
+     * Returns a single field for a user (e.g. "username"), or {@code null} if
+     * either the user key or the field is absent. Used by {@link DataResolver}
+     * to resolve {@code ${userKey.field}} placeholders from feature files.
+     */
+    public static String field(String userKey, String field) {
+        JsonObject node = USERS.getAsJsonObject(userKey);
+        if (node == null || !node.has(field) || node.get(field).isJsonNull()) {
+            return null;
+        }
+        return node.get(field).getAsString();
+    }
+
     public static TestUser user(String key) {
         JsonObject node = USERS.getAsJsonObject(key);
         if (node == null) {

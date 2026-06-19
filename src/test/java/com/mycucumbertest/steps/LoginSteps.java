@@ -1,9 +1,11 @@
 package com.mycucumbertest.steps;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mycucumbertest.hooks.Hooks;
 import com.mycucumbertest.pages.login.LoginPage;
+import com.mycucumbertest.utils.DataResolver;
 import io.cucumber.java.en.*;
 
 public class LoginSteps {
@@ -17,7 +19,10 @@ public class LoginSteps {
 
     @When("user enters username {string} and password {string}")
     public void user_enters_username_and_password(String username, String password) {
-        loginPage.enterCredentials(username, password);
+        // Resolve ${...} tokens from users.json / config.properties; plain
+        // literals pass through unchanged.
+        loginPage.enterCredentials(
+                DataResolver.resolve(username), DataResolver.resolve(password));
     }
 
     @When("user clicks on login button")
@@ -28,5 +33,13 @@ public class LoginSteps {
     @Then("user should see the home page")
     public void user_should_see_the_home_page() {
         assertTrue(loginPage.isHomePageDisplayed());
+    }
+    @Then("user should get an error message")
+    public void user_should_get_an_error_message() {
+        String errorMsg = loginPage.isLoginErrorDisplayed();
+        if (!errorMsg.isEmpty())
+            assertTrue(loginPage.isLoginErrorDisplayed().contains("Username and password do not match any user in this service"));
+        else
+            assertFalse(false, "The error message is not displayed");
     }
 }

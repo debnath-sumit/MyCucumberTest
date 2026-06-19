@@ -151,7 +151,7 @@ public class CucumberReportGenerator {
         long failed = results.size() - passed;
 
         System.out.println("============================================================");
-        System.out.println(" Cucumber Test Summary");
+        System.out.println(" My Dummy Cucumber Test Summary");
         System.out.println("============================================================");
         System.out.printf(" Total: %d   Passed: %d   Failed: %d%n",
                 results.size(), passed, failed);

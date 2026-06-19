@@ -1,5 +1,6 @@
 package com.mycucumbertest.pages.login;
 
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.mycucumbertest.pages.BasePage;
 import com.mycucumbertest.utils.ConfigReader;
@@ -43,4 +44,13 @@ public class LoginPage extends BasePage {
     public boolean isHomePageDisplayed() {
         return loc.homePageTitle().isVisible();
     }
+
+    public String isLoginErrorDisplayed() {
+        if (loc.errorMessage().isVisible()) {
+            Locator errorMsg = loc.errorMessage();
+            return errorMsg.textContent();
+        }
+        return null;
+    }
+
 }
