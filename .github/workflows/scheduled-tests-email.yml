@@ -1,11 +1,13 @@
 name: Scheduled Cucumber Tests + Email Report
 
 on:
-  # Best-effort every 10 minutes. NOTE: GitHub's scheduled cron is not exact —
-  # runs can be delayed or skipped under load, and the schedule auto-disables
-  # after 60 days with no repo commits.
+  # Daily at 10 PM Pacific. GitHub cron is in UTC and does NOT observe DST, so
+  # 05:00 UTC = 10 PM PDT (summer) / 9 PM PST (winter). Adjust the hour if you
+  # want a different zone (e.g. "0 22 * * *" = 10 PM UTC).
+  # NOTE: scheduled cron is best-effort — runs can be delayed/skipped under
+  # load, and the schedule auto-disables after 60 days with no repo commits.
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 5 * * *"
   # Lets you trigger a run manually from the Actions tab to test immediately.
   workflow_dispatch:
 
