@@ -37,6 +37,14 @@ public class LoginPage extends BasePage {
         loc.passwordInput().fill(password);
     }
 
+    public void enterUsername(String username) {
+        loc.usernameInput().fill(username);
+    }
+
+    public void enterPassword(String password) {
+        loc.passwordInput().fill(password);
+    }
+
     public void clickLogin() {
         loc.loginButton().click();
     }

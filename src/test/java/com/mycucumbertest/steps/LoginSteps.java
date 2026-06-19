@@ -25,6 +25,18 @@ public class LoginSteps {
                 DataResolver.resolve(username), DataResolver.resolve(password));
     }
 
+    @When("user enters username {string}")
+    public void user_enters_username(String username) {
+        loginPage.enterUsername(
+                DataResolver.resolve(username));
+    }
+
+    @When("user enters password {string}")
+    public void user_enters_password(String password) {
+        loginPage.enterPassword(
+                DataResolver.resolve(password));
+    }
+
     @When("user clicks on login button")
     public void user_clicks_on_login_button() {
         loginPage.clickLogin();
@@ -42,4 +54,15 @@ public class LoginSteps {
         else
             assertFalse(false, "The error message is not displayed");
     }
+
+    @Then("user should get an error message {string}")
+    public void credential_error(String expectedErrorMsg){
+        String errorMsg = loginPage.isLoginErrorDisplayed();
+        if (!errorMsg.isEmpty())
+            assertTrue(loginPage.isLoginErrorDisplayed().contains(expectedErrorMsg));
+        else
+            assertFalse(false, "The error message is not displayed");
+    }
+
+
 }
