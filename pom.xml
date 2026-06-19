@@ -5,7 +5,7 @@
 
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>org.example</groupId>
+	<groupId>com.mycucumbertest</groupId>
 	<artifactId>MyCucumberTest</artifactId>
 	<version>1.0-SNAPSHOT</version>
 
@@ -13,6 +13,9 @@
 		<maven.compiler.source>17</maven.compiler.source>
 		<maven.compiler.target>17</maven.compiler.target>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+		<slf4j.version>2.0.16</slf4j.version>
+		<logback.version>1.5.12</logback.version>
 	</properties>
 
 	<dependencyManagement>
@@ -32,6 +35,12 @@
 			<groupId>com.microsoft.playwright</groupId>
 			<artifactId>playwright</artifactId>
 			<version>1.60.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>2.11.0</version>
 		</dependency>
 
 		<dependency>
@@ -59,6 +68,19 @@
 			<artifactId>junit-jupiter-api</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>${slf4j.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<version>${logback.version}</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -74,7 +96,31 @@
 						<include>**/*TestCase.java</include>
 						<include>**/TestRunner.java</include>
 					</includes>
+					<!-- Let the build continue when tests fail so the summary
+					     report below is still generated. Set to false if you
+					     need `mvn test` to exit non-zero on failures (CI). -->
+					<testFailureIgnore>true</testFailureIgnore>
 				</configuration>
+			</plugin>
+
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.5.0</version>
+				<configuration>
+					<mainClass>com.mycucumbertest.report.CucumberReportGenerator</mainClass>
+				</configuration>
+				<executions>
+					<!-- Generate the pass/fail summary automatically after the
+					     Cucumber tests run (part of `mvn test`). -->
+					<execution>
+						<id>cucumber-summary</id>
+						<phase>test</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
