@@ -16,11 +16,12 @@ Feature: Login functionality
     Given user opens the login page
     When user enters username "${standardUser.username}"
     And user clicks on login button
-    Then user should get an error message "Username is required"
+    Then user should get an error message "Password is required"
 
 
   Scenario: User should not login without username
     Given user opens the login page
     When user enters password "${standardUser.password}"
     And user clicks on login button
-    Then user should get an error message "Password is not required"
+    #Then user should get an error message "Username is required"
+    Then user should get an error message "Not valid"

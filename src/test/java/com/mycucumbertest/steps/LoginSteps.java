@@ -46,6 +46,7 @@ public class LoginSteps {
     public void user_should_see_the_home_page() {
         assertTrue(loginPage.isHomePageDisplayed());
     }
+
     @Then("user should get an error message")
     public void user_should_get_an_error_message() {
         String errorMsg = loginPage.isLoginErrorDisplayed();

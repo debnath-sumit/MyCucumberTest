@@ -27,7 +27,7 @@ public class LoginPageLocators {
         return page.locator("#login-button");
     }
     public Locator errorMessage() {
-        return page.locator(".error-button");
+        return page.locator("[data-test='error']");
     }
 
     public Locator homePageTitle() {
