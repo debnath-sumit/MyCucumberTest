@@ -27,17 +27,21 @@ MyCucumberTest/
     │   │   ├── pages/                        # Page Object Model
     │   │   │   ├── BasePage.java
     │   │   │   └── login/
-    │   │   │       ├── LoginPage.java
-    │   │   │       └── LoginPageLocators.java
+    │   │   │       ├── LoginPage.java        # login actions
+    │   │   │       └── LoginPageLocators.java # reads selectors from the object repository
     │   │   ├── report/
     │   │   │   └── CucumberReportGenerator.java  # reads cucumber.json -> test-summary.html
     │   │   └── utils/
     │   │       ├── ConfigReader.java         # reads config.properties / -D system props
     │   │       ├── DataResolver.java         # resolves ${...} tokens in feature files
+    │   │       ├── LocatorRepository.java    # loads locators/<page>.properties selectors
     │   │       ├── PlaywrightFactory.java    # builds Playwright browser/page
     │   │       ├── TestUser.java             # immutable user record
     │   │       └── TestUsers.java            # loads users.json
     │   └── org/example/Main.java
+    ├── main/resources/
+    │   └── locators/
+    │       └── login.properties             # object repository: key -> selector for the login page
     └── test/
         ├── java/com/mycucumbertest/
         │   ├── hooks/Hooks.java              # @Before/@After: browser lifecycle
@@ -95,6 +99,45 @@ When user enters username "${standardUser.username}" and password "${standardUse
 
 To add a user: add a block to `testdata/users.json`, then reference
 `${yourKey.username}` in the feature.
+
+---
+
+## Locators: the object repository (`locators/*.properties`)
+
+Selectors are **not** hard-coded in Java. Each page has a property file under
+`src/main/resources/locators/` mapping a key to a selector:
+
+```properties
+# src/main/resources/locators/login.properties
+login.username   = #user-name
+login.password   = #password
+login.button     = #login-button
+login.error      = [data-test="error"]
+login.homeTitle  = .title
+```
+
+`LocatorRepository` loads `locators/<page>.properties` from the classpath, and
+the page's `*Locators` class resolves selectors by key:
+
+```java
+private final LocatorRepository repo = new LocatorRepository("login");
+
+public Locator usernameInput() {
+    return page.locator(repo.selector("login.username"));
+}
+```
+
+- **When a selector changes**, edit the `.properties` file only — no Java recompile.
+- **Selector syntax** is Playwright's (CSS by default), so `#id`, `.class`, and
+  `[data-test="..."]` all work.
+- **Trade-off:** keys are resolved at runtime, so a typo'd key fails when the test
+  runs (not at compile time). `LocatorRepository.selector()` throws a clear error
+  naming the missing key.
+
+**To add a new page:** create `src/main/resources/locators/<page>.properties`,
+then in that page's locators class use `new LocatorRepository("<page>")` and
+`repo.selector("<page>.<element>")`. The loader is generic — no new Java plumbing
+per page.
 
 ---
 

@@ -23,6 +23,7 @@ import java.nio.file.Paths;
 public class Hooks {
 
     private static final Path TRACE_DIR = Paths.get("target/traces");
+    private static final Path SCREENSHOT_DIR = Paths.get("target/screenshots");
 
     public static Playwright playwright;
     public static Browser browser;
@@ -44,13 +45,19 @@ public class Hooks {
     }
 
     @After
-    public void tearDown(Scenario scenario) {
+    public void tearDown(Scenario scenario) throws Exception {
+        String name = scenario.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
+
         if (scenario.isFailed() && page != null) {
-            scenario.attach(page.screenshot(new Page.ScreenshotOptions().setFullPage(true)),
-                    "image/png", scenario.getName());
+            // Save the screenshot to a file (so test-summary.html can link to it
+            // by the same sanitized name) and also attach it to the Cucumber HTML.
+            Files.createDirectories(SCREENSHOT_DIR);
+            byte[] png = page.screenshot(new Page.ScreenshotOptions()
+                    .setFullPage(true)
+                    .setPath(SCREENSHOT_DIR.resolve(name + ".png")));
+            scenario.attach(png, "image/png", scenario.getName());
         }
 
-        String name = scenario.getName().replaceAll("[^a-zA-Z0-9.-]", "_");
         if (context != null) {
             try {
                 context.tracing().stop(new Tracing.StopOptions()

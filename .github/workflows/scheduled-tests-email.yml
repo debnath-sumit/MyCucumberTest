@@ -63,6 +63,15 @@ jobs:
             echo "$DELIM"
           } >> "$GITHUB_OUTPUT"
 
+          # Attach failure screenshots as a fallback: Gmail blocks the inline
+          # data: images in the report body, so attaching the PNGs guarantees
+          # they're viewable. Empty when no scenario failed (no screenshots).
+          if ls target/screenshots/*.png >/dev/null 2>&1; then
+            echo "attach=target/screenshots/*.png" >> "$GITHUB_OUTPUT"
+          else
+            echo "attach=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Send report email
         if: always()
         uses: dawidd6/action-send-mail@v3
@@ -76,3 +85,6 @@ jobs:
           to: ${{ secrets.MAIL_TO }}
           subject: "Cucumber Test Report — ${{ github.repository }} run #${{ github.run_number }}"
           html_body: ${{ steps.body.outputs.html }}
+          # Failure screenshots attached as a fallback for clients (e.g. Gmail)
+          # that strip the inline data: images. Empty string = no attachments.
+          attachments: ${{ steps.body.outputs.attach }}

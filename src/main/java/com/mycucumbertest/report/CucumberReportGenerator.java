@@ -13,7 +13,11 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Reads the Cucumber results (target/cucumber.json) and produces a pass/fail
@@ -209,6 +213,8 @@ public class CucumberReportGenerator {
           .append(".b-pass{background:#dafbe1;color:#1a7f37}.b-fail{background:#ffebe9;color:#cf222e}")
           .append(".err{color:#cf222e;font-family:ui-monospace,Menlo,monospace;font-size:.82rem;white-space:pre-wrap}")
           .append("h2{margin:1.5rem 0 .5rem}.dur{color:#888;white-space:nowrap}")
+          .append(".links{margin-top:.4rem;font-size:.82rem}.links a{color:#0969da;text-decoration:none}.links a:hover{text-decoration:underline}")
+          .append(".shot{margin-top:.5rem}.shot img{max-width:480px;width:100%;border:1px solid #ddd;border-radius:6px;display:block}")
           .append("</style></head><body>");
 
         sb.append("<h1>Cucumber Test Summary</h1>")
@@ -220,44 +226,94 @@ public class CucumberReportGenerator {
           .append("<div class=\"card fail\"><div class=\"n\">").append(failed).append("</div><div class=\"l\">Failed</div></div>")
           .append("</div>");
 
-        // Failed first — that's what people look at.
-        sb.append("<h2>Failed scenarios (").append(failed).append(")</h2>");
-        if (failed == 0) {
-            sb.append("<p>No failed scenarios. 🎉</p>");
+        // Scenarios grouped by feature. Features that contain at least one
+        // failure are listed first, and within each feature failed scenarios
+        // come before passed ones — that's what people look at.
+        if (results.isEmpty()) {
+            sb.append("<p>No scenarios were executed.</p>");
         } else {
-            sb.append("<table><tr><th>Feature</th><th>Scenario</th><th>Failed at / Error</th><th>Time</th></tr>");
+            Map<String, List<ScenarioResult>> byFeature = new LinkedHashMap<>();
             for (ScenarioResult r : results) {
-                if (!r.passed) {
-                    sb.append("<tr><td>").append(escape(r.feature)).append("</td>")
-                      .append("<td>").append(escape(r.scenario)).append("</td>")
-                      .append("<td><strong>").append(escape(r.failedStep)).append("</strong>");
-                    if (r.error != null) {
-                        sb.append("<div class=\"err\">").append(escape(r.error)).append("</div>");
-                    }
-                    sb.append("</td><td class=\"dur\">").append(String.format("%.2fs", r.durationSeconds)).append("</td></tr>");
-                }
+                byFeature.computeIfAbsent(r.feature, k -> new ArrayList<>()).add(r);
             }
-            sb.append("</table>");
-        }
 
-        sb.append("<h2>Passed scenarios (").append(passed).append(")</h2>");
-        if (passed == 0) {
-            sb.append("<p>No passed scenarios.</p>");
-        } else {
-            sb.append("<table><tr><th>Feature</th><th>Scenario</th><th>Status</th><th>Time</th></tr>");
-            for (ScenarioResult r : results) {
-                if (r.passed) {
-                    sb.append("<tr><td>").append(escape(r.feature)).append("</td>")
-                      .append("<td>").append(escape(r.scenario)).append("</td>")
-                      .append("<td><span class=\"badge b-pass\">PASSED</span></td>")
-                      .append("<td class=\"dur\">").append(String.format("%.2fs", r.durationSeconds)).append("</td></tr>");
+            List<String> features = new ArrayList<>(byFeature.keySet());
+            features.sort(Comparator.comparingInt(
+                    f -> byFeature.get(f).stream().anyMatch(r -> !r.passed) ? 0 : 1));
+
+            for (String feature : features) {
+                List<ScenarioResult> rows = new ArrayList<>(byFeature.get(feature));
+                long fPassed = rows.stream().filter(r -> r.passed).count();
+                long fFailed = rows.size() - fPassed;
+                rows.sort(Comparator.comparing((ScenarioResult r) -> r.passed));
+
+                sb.append("<h2>").append(escape(feature)).append("</h2>")
+                  .append("<div class=\"sub\">").append(rows.size()).append(" scenario(s) — ")
+                  .append(fPassed).append(" passed, ").append(fFailed).append(" failed</div>");
+
+                sb.append("<table><tr><th>Scenario</th><th>Status</th><th>Failed at / Error</th><th>Time</th></tr>");
+                for (ScenarioResult r : rows) {
+                    sb.append("<tr><td>").append(escape(r.scenario)).append("</td><td>");
+                    if (r.passed) {
+                        sb.append("<span class=\"badge b-pass\">PASSED</span></td><td>—");
+                    } else {
+                        sb.append("<span class=\"badge b-fail\">FAILED</span></td>")
+                          .append("<td><strong>").append(escape(r.failedStep)).append("</strong>");
+                        if (r.error != null) {
+                            sb.append("<div class=\"err\">").append(escape(r.error)).append("</div>");
+                        }
+                        sb.append(artifactLinks(r.scenario));
+                    }
+                    sb.append("</td><td class=\"dur\">")
+                      .append(String.format("%.2fs", r.durationSeconds)).append("</td></tr>");
                 }
+                sb.append("</table>");
             }
-            sb.append("</table>");
         }
 
         sb.append("</body></html>");
         return sb.toString();
+    }
+
+    /**
+     * On-failure artifacts saved by Hooks, matched by the same sanitized scenario
+     * name. The screenshot is inlined as a base64 data URI so the report is
+     * self-contained and the image travels inside the emailed HTML body (no
+     * external file needed). The image is also linked to the on-disk file for
+     * full-size local viewing, and the Playwright trace is linked when present.
+     * Only emits markup when a file actually exists.
+     *
+     * <p>Note: some mail clients (notably Gmail web) block {@code data:} image
+     * URIs, so the CI workflow also attaches the PNGs to the email as a fallback.
+     */
+    private static String artifactLinks(String scenarioName) {
+        String name = sanitize(scenarioName);
+        StringBuilder out = new StringBuilder();
+
+        Path shot = Paths.get("target/screenshots", name + ".png");
+        if (Files.exists(shot)) {
+            try {
+                String b64 = Base64.getEncoder().encodeToString(Files.readAllBytes(shot));
+                out.append("<div class=\"shot\"><a href=\"screenshots/").append(name).append(".png\">")
+                   .append("<img alt=\"Screenshot at failure\" src=\"data:image/png;base64,")
+                   .append(b64).append("\"></a></div>");
+            } catch (IOException e) {
+                out.append("<div class=\"links\">(screenshot unreadable: ")
+                   .append(escape(e.getMessage())).append(")</div>");
+            }
+        }
+
+        Path trace = Paths.get("target/traces", name + ".zip");
+        if (Files.exists(trace)) {
+            out.append("<div class=\"links\"><a href=\"traces/").append(name)
+               .append(".zip\">🔍 Trace</a></div>");
+        }
+        return out.toString();
+    }
+
+    /** Mirror of Hooks' scenario-name sanitization, so artifact filenames match. */
+    private static String sanitize(String name) {
+        return name.replaceAll("[^a-zA-Z0-9.-]", "_");
     }
 
     private static String escape(String s) {

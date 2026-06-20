@@ -42,7 +42,9 @@ Step definitions (LoginSteps)     ← glue: maps Gherkin lines to page actions
         │
 Page object (LoginPage)           ← user actions ("login", "enterCredentials")
         │
-Locators (LoginPageLocators)      ← CSS/selectors only — the single place to edit
+Locators (LoginPageLocators)      ← exposes Locators, but holds no selectors
+        │
+Object repository (*.properties)  ← key → selector — the single place to edit
         │
 Playwright Page                   ← the actual browser
 ```
@@ -55,7 +57,7 @@ Cross-cutting concerns sit beside these layers:
 
 The guiding rules:
 
-1. **Selectors live in exactly one file per page** (`*Locators`). A UI change is a one-file edit.
+1. **Selectors live in one property file per page** (`locators/<page>.properties`). A UI change is a one-file edit, no recompile.
 2. **No credentials or URLs hard-coded in tests** — they come from `users.json` / `config.properties`.
 3. **Features read like business requirements**, free of selectors and Java.
 
@@ -76,15 +78,18 @@ MyCucumberTest/
     │   │   ├── BasePage.java                      #   common page helpers (title, url)
     │   │   └── login/
     │   │       ├── LoginPage.java                 #   login actions
-    │   │       └── LoginPageLocators.java         #   login selectors only
+    │   │       └── LoginPageLocators.java         #   reads selectors from the object repository
     │   ├── report/
     │   │   └── CucumberReportGenerator.java       # cucumber.json -> test-summary.html
     │   └── utils/
     │       ├── ConfigReader.java                  # config.properties + -D overrides
     │       ├── DataResolver.java                  # resolves ${...} tokens
+    │       ├── LocatorRepository.java             # loads locators/<page>.properties selectors
     │       ├── PlaywrightFactory.java             # builds the browser per config
     │       ├── TestUser.java                      # immutable user record
     │       └── TestUsers.java                     # loads users.json
+    ├── main/resources/locators/
+    │   └── login.properties                       # object repository: key -> selector (login page)
     └── test/
         ├── java/com/mycucumbertest/
         │   ├── hooks/Hooks.java                   # @Before/@After browser lifecycle + tracing
@@ -114,13 +119,17 @@ helpers (`title()`, `url()`). Every page object extends it.
 `isHomePageDisplayed()`, `isLoginErrorDisplayed()`). It holds **no selectors** —
 it delegates all element lookups to `LoginPageLocators`.
 
-**`LoginPageLocators`** — returns Playwright `Locator`s and nothing else
-(`#user-name`, `#password`, `#login-button`, `.error-button`, `.title`). When the
-UI changes, this is the only file to touch.
+**`LoginPageLocators`** — returns Playwright `Locator`s and nothing else, but it
+holds **no literal selectors**. It owns a `LocatorRepository("login")` and looks
+each selector up by key (`repo.selector("login.username")`). The actual CSS lives
+in `locators/login.properties` (the object repository), so a UI change is edited
+there — not in Java. See §5b.
 
 > **Adding a new page:** create `pages/<area>/<Area>Page.java` (extends
-> `BasePage`) and `pages/<area>/<Area>PageLocators.java`. Keep actions in the
-> page, selectors in the locators.
+> `BasePage`) and `pages/<area>/<Area>PageLocators.java` (wiring a
+> `LocatorRepository("<area>")`), plus `locators/<area>.properties`. Keep actions
+> in the page, selector *keys* in the locators class, selector *strings* in the
+> property file.
 
 ### 4.2 Hooks (browser lifecycle)
 
@@ -170,6 +179,7 @@ Surefire picks it up because the filename matches `**/TestRunner.java`.
 | Class | Responsibility |
 | --- | --- |
 | **`ConfigReader`** | Resolves config in priority order: **`-Dkey` system property → `config.properties` → caller fallback**. Provides `get`, `get(key, default)`, `getBool`. |
+| **`LocatorRepository`** | Loads `locators/<page>.properties` from the classpath; `selector(key)` returns the selector string (throws a clear error for a missing/blank key). One instance per page's locators class. |
 | **`PlaywrightFactory`** | Launches the browser named by `browser` (chromium/firefox/webkit) honouring the `headless` flag. |
 | **`TestUser`** | Immutable `record(username, password)`. |
 | **`TestUsers`** | Loads `testdata/users.json` once; provides `standard()`, `lockedOut()`, `user(key)`, and `field(userKey, field)` (used by `DataResolver`). |
@@ -182,9 +192,10 @@ Surefire picks it up because the filename matches `**/TestRunner.java`.
 and after-hooks — a scenario passes only if **all** are `passed`), and emits:
 
 - a **console** pass/fail summary, and
-- **`target/test-summary.html`** — a styled report listing failed scenarios
-  first (with the failing step + error), then passed ones, with totals and
-  durations.
+- **`target/test-summary.html`** — a styled report with totals at the top, then
+  scenarios **grouped by feature** (each section showing per-feature pass/fail
+  counts). Features with failures sort first, and within each feature failed
+  scenarios (with the failing step + error) come before passed ones.
 
 It runs automatically during `mvn test` via the `exec-maven-plugin` bound to the
 `test` phase.
@@ -208,6 +219,44 @@ Resolution order for `${key.field}`:
 `testdata/users.json` currently defines `standardUser`, `lockedOutUser`, and
 `invalidUser`. **To add a user:** add a block to `users.json`, then reference
 `${yourKey.username}` in a feature — no Java change needed.
+
+---
+
+## 5b. Object repository (`locators/*.properties`)
+
+Selectors are externalized the same way data is. Each page has a property file
+under `src/main/resources/locators/` mapping a key to a Playwright selector:
+
+```properties
+# locators/login.properties
+login.username   = #user-name
+login.password   = #password
+login.button     = #login-button
+login.error      = [data-test="error"]
+login.homeTitle  = .title
+```
+
+`LocatorRepository` loads `locators/<page>.properties` from the classpath; the
+page's `*Locators` class resolves selectors by key:
+
+```java
+private final LocatorRepository repo = new LocatorRepository("login");
+
+public Locator usernameInput() {
+    return page.locator(repo.selector("login.username"));
+}
+```
+
+- **UI change** → edit the `.properties` file only, no Java recompile.
+- **Selector syntax** is Playwright's (CSS by default): `#id`, `.class`,
+  `[data-test="..."]` all work.
+- **Trade-off:** keys resolve at runtime, so a typo'd key fails when the test runs
+  rather than at compile time — `LocatorRepository.selector()` throws naming the
+  missing key.
+
+**Add a page:** create `locators/<page>.properties`, then in that page's locators
+class use `new LocatorRepository("<page>")` and `repo.selector("<page>.<element>")`.
+The loader is generic — no new Java plumbing per page.
 
 ---
 
@@ -313,7 +362,8 @@ gh run watch -R debnath-sumit/MyCucumberTest
 | --- | --- |
 | **New scenario** | Add it to an existing `.feature`; reuse existing steps where possible. |
 | **New step phrasing** | Add a `@Given/@When/@Then` method in the relevant `*Steps` class. |
-| **New page** | Add `<Area>Page` (extends `BasePage`) + `<Area>PageLocators`; register the steps package is already globbed via the `steps` glue. |
+| **New page** | Add `<Area>Page` (extends `BasePage`) + `<Area>PageLocators` (wiring `new LocatorRepository("<area>")`) + `locators/<area>.properties`. Steps are already globbed via the `steps` glue. |
+| **Changed selector** | Edit the value in `locators/<page>.properties` — no Java change. |
 | **New test user** | Add a block to `testdata/users.json`; reference `${key.field}`. |
 | **New config knob** | Add the key to `config.properties`; read via `ConfigReader.get(...)`; override with `-Dkey`. |
 | **Different browser** | `-Dbrowser=firefox|webkit|chromium` (already wired in `PlaywrightFactory`). |
@@ -324,7 +374,8 @@ gh run watch -R debnath-sumit/MyCucumberTest
 
 - Use **JUnit 5** assertions only (`org.junit.jupiter.api.Assertions`); JUnit 4
   imports can break a clean CLI build.
-- Keep **selectors out of page objects** — they belong in `*Locators`.
+- Keep **selectors out of Java entirely** — selector *strings* live in
+  `locators/<page>.properties`; the `*Locators` class only holds the *keys*.
 - Keep **credentials/URLs out of Java** — they belong in `users.json` /
   `config.properties`.
 - `Hooks` fields are `public static`; step classes are instantiated per scenario
