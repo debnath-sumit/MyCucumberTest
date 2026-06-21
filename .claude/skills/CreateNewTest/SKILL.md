@@ -1,6 +1,6 @@
 ---
 name: CreateNewTest
-description: Use when adding a new UI test, scenario, or page to the MyCucumberTest framework — author a feature, step definitions, page object, and object-repository selectors from plain-English instructions, in Java + Playwright with mandatory assertions.
+description: Use when adding a new UI test, scenario, or page to the MyCucumberTest framework — author a feature, step definitions, page object, and object-repository selectors from plain-English instructions OR from a manual-test-case JSON exported by the ManualTestGenerateTool, in Java + Playwright with mandatory assertions.
 ---
 
 # CreateNewTest
@@ -21,6 +21,89 @@ in a JUnit 5 assertion that can actually fail.**
 
 - "Add a test/scenario for …", "create a new page test", "automate the X flow".
 - The user describes steps in plain English (open page, enter X, click Y, expect Z).
+- The user gives you a **manual-test-case JSON** file (from ManualTestGenerateTool)
+  and says "automate these" / "create the test from this JSON". → See
+  **"Importing from a manual-test-case JSON"** below, then follow the normal build order.
+
+## Importing from a manual-test-case JSON
+
+The companion **ManualTestGenerateTool** exports a JSON file describing one story
+and its manual test cases. The user drops that file into this repo (suggested:
+`manual-tests/<story>.json`) and asks you to automate it. Read the file and map it
+onto the framework — then proceed with the normal **build order** below.
+
+### Input schema
+
+```json
+{
+  "shortDescription": "User can reset password via email",
+  "description": "...",
+  "acceptanceCriteria": "- link expires after 30 min\n- min 8 chars",
+  "generatedAt": "2026-06-20T10:00:00Z",
+  "testCases": [
+    {
+      "id": "TC-01",
+      "title": "Successful password reset with valid email",
+      "preconditions": "User has a registered account",
+      "steps": ["Navigate to the login page", "Click 'Forgot Password'", "..."],
+      "expectedResult": "Password is reset and user can log in",
+      "priority": "High",
+      "type": "Positive"
+    }
+  ]
+}
+```
+
+### Mapping rules (JSON → Gherkin + layers)
+
+| JSON | Becomes |
+| --- | --- |
+| one JSON file (one story) | one `src/test/resources/features/<slug(shortDescription)>.feature` |
+| `shortDescription` | `Feature:` name (and a `# <description>` comment line) |
+| each `testCases[]` item | one `Scenario:` (name = `title`) |
+| `type` + `priority` | scenario tags, e.g. `@positive @high` (`@negative`/`@edge`, `@medium`/`@low`) |
+| `preconditions` | leading `Given` step(s); if identical across all cases, lift into a `Background:` |
+| `steps[]` | `When` (first) + `And` (rest), rewritten as **intention-style** phrases |
+| `expectedResult` | the `Then` step — must map to a real JUnit 5 assertion |
+
+### Rewrite the steps — do NOT paste them literally
+
+Manual steps are descriptive ("Enter the registered email in the Email field").
+Convert them to the repo's **intention-style** Gherkin and, critically:
+
+- **Reuse existing step phrases** wherever the action already exists. Grep
+  `src/test/java/com/mycucumbertest/steps/` first — e.g. if "open the login page"
+  already exists as `Given user opens the login page`, use that exact wording so no
+  new glue is needed.
+- **Replace literal data with `${...}` tokens** (emails, usernames, passwords,
+  amounts). Add new values to `testdata/users.json`; never hard-code in the feature.
+- **Collapse trivial UI minutiae.** "Click the Email field, then type…" → one
+  `When user enters email "${...}"`.
+- **One assertion per scenario minimum**, derived from `expectedResult`.
+
+### Then continue with the normal build order
+
+For any **new page** referenced by the steps, you still need selectors: ask the
+user to create `locators/<page>.properties` first (per the build order). Reuse
+existing pages/steps for anything already in the repo. Finish with
+`mvn -q -B test-compile`.
+
+### Example (one test case → one scenario)
+
+From the TC-01 above, with an existing login page and a new reset page:
+
+```gherkin
+Feature: User can reset password via email
+
+  @positive @high
+  Scenario: Successful password reset with valid email
+    Given user has a registered account "${standardUser.username}"
+    When user opens the login page
+    And user clicks forgot password
+    And user requests a reset link for "${standardUser.username}"
+    And user opens the reset link and sets password "${standardUser.newPassword}"
+    Then user should be able to log in with the new password
+```
 
 ## The build order (always this sequence)
 
